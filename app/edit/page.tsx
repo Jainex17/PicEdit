@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
-import ReactCrop, { Crop, PixelCrop, centerCrop, makeAspectCrop } from 'react-image-crop';
+import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
 import { ChromePicker } from 'react-color';
 import { motion, AnimatePresence } from 'framer-motion';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -71,6 +71,8 @@ interface SliderControlProps {
   step?: number;
   unit?: string;
 }
+
+type ShapeType = 'rectangle' | 'circle' | 'line' | 'arrow';
 
 const SliderControl = ({ label, value, onChange, min = 0, max = 100, step = 1, unit = '%' }: SliderControlProps) => (
   <div className="space-y-2">
@@ -384,18 +386,12 @@ export default function EditPage() {
   const [brightness, setBrightness] = useState(100);
   const [contrast, setContrast] = useState(100);
   const [saturation, setSaturation] = useState(100);
-  const [temperature, setTemperature] = useState(0);
-  const [tint, setTint] = useState(0);
   const [blur, setBlur] = useState(0);
   const [sharpen, setSharpen] = useState(0);
   const [vignette, setVignette] = useState(0);
-  const [noise, setNoise] = useState(0);
   const [sepia, setSepia] = useState(0);
   const [hue, setHue] = useState(0);
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
-  const [showColorAdjust, setShowColorAdjust] = useState(false);
-  const [showEffects, setShowEffects] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const [crop, setCrop] = useState<Crop>({
     unit: '%',
     width: 90,
@@ -404,15 +400,11 @@ export default function EditPage() {
     y: 5,
   });
   const [completedCrop, setCompletedCrop] = useState<PixelCrop | null>(null);
-  const [croppedImageData, setCroppedImageData] = useState<string | null>(null);
   const [rotation, setRotation] = useState(0);
   const [flip, setFlip] = useState({ horizontal: false, vertical: false });
   const [isCropping, setIsCropping] = useState(false);
   const [fileName, setFileName] = useState('edited-image.jpg');
   const [isSaving, setIsSaving] = useState(false);
-  const [showAdjustments, setShowAdjustments] = useState(true);
-  const [showCropControls, setShowCropControls] = useState(false);
-  const [showTransformControls, setShowTransformControls] = useState(true);
   const [scale, setScale] = useState(1);
   
   // Drawing related states
@@ -496,12 +488,6 @@ export default function EditPage() {
     };
     img.src = imageData;
   }, [imageData]);
-
-  useEffect(() => {
-    // Ensure Transform section is expanded on first load
-    setShowTransformControls(true);
-  }, []);
-
   const handleBack = () => {
     router.push('/');
   };
@@ -511,12 +497,9 @@ export default function EditPage() {
     setBrightness(100);
     setContrast(100);
     setSaturation(100);
-    setTemperature(0);
-    setTint(0);
     setBlur(0);
     setSharpen(0);
     setVignette(0);
-    setNoise(0);
     setSepia(0);
     setHue(0);
     setSelectedFilter(null);
@@ -571,7 +554,6 @@ export default function EditPage() {
     const originalImage = sessionStorage.getItem('editImageData');
     if (originalImage) {
       setImageData(originalImage);
-      setCroppedImageData(null);
     }
 
     // Reset active category to default
@@ -714,64 +696,6 @@ export default function EditPage() {
     img.src = imageData;
   };
 
-  // Drawing Functions
-  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = e.currentTarget;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    
-    // Get the mouse position relative to the canvas
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-
-    setDrawingState({
-      isDrawing: true,
-      lastX: x,
-      lastY: y
-    });
-
-    // Start the path at the current mouse position
-    const ctx = canvas.getContext('2d');
-    if (ctx && drawSettings.tool === 'pen') {
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-    }
-  };
-
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!drawingState.isDrawing || drawSettings.tool !== 'pen') return;
-
-    const canvas = e.currentTarget;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    
-    // Get the current mouse position
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-
-    // Set drawing styles
-    ctx.strokeStyle = drawSettings.color;
-    ctx.lineWidth = drawSettings.size;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.globalAlpha = drawSettings.opacity / 100;
-
-    // Draw the line
-    ctx.lineTo(x, y);
-    ctx.stroke();
-
-    setDrawingState(prev => ({
-      ...prev,
-      lastX: x,
-      lastY: y
-    }));
-  };
-
   const stopDrawing = () => {
     if (drawingState.isDrawing && drawCanvasRef.current) {
       const ctx = drawCanvasRef.current.getContext('2d');
@@ -780,27 +704,6 @@ export default function EditPage() {
       }
     }
     setDrawingState(prev => ({ ...prev, isDrawing: false }));
-  };
-
-  const handleTextAdd = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isAddingText || !newTextInput) return;
-
-    const canvas = e.currentTarget;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    setTextAnnotations(prev => [...prev, {
-      x,
-      y,
-      text: newTextInput,
-      color: drawSettings.color,
-      fontSize: drawSettings.size * 2
-    }]);
-
-    setNewTextInput('');
-    setIsAddingText(false);
-    setDrawSettings(prev => ({ ...prev, tool: null }));
   };
 
   const handleRotate = (degrees: number) => {
@@ -842,7 +745,7 @@ export default function EditPage() {
 
         // Get the cropped image data
         const croppedData = canvas.toDataURL(imageType || 'image/jpeg');
-        setCroppedImageData(croppedData);
+        
         setImageData(croppedData); // Update the main image data
         setIsCropping(false);
         setCompletedCrop(null);
@@ -875,17 +778,6 @@ export default function EditPage() {
       y: 0, 
       opacity: 1,
       transition: { duration: 0.3 }
-    }
-  };
-
-  const pulseVariants = {
-    initial: { boxShadow: '0 0 0 0 rgba(139, 92, 246, 0)' },
-    pulse: {
-      boxShadow: ['0 0 0 0 rgba(139, 92, 246, 0)', '0 0 0 8px rgba(139, 92, 246, 0.2)', '0 0 0 0 rgba(139, 92, 246, 0)'],
-      transition: {
-        repeat: Infinity,
-        duration: 2
-      }
     }
   };
 
@@ -934,22 +826,6 @@ export default function EditPage() {
       transform: `rotate(${rotation}deg) scaleX(${flip.horizontal ? -1 : 1}) scaleY(${flip.vertical ? -1 : 1})`,
       boxShadow: vignette > 0 ? `inset 0 0 ${vignette * 5}px rgba(0,0,0,${vignette / 100})` : 'none'
     };
-  };
-
-  // Toggle controls visibility
-  const toggleControls = (control: string) => {
-    if (control === 'adjust') {
-      setShowAdjustments(!showAdjustments);
-    } else if (control === 'crop') {
-      setShowCropControls(!showCropControls);
-      setIsCropping(!isCropping);
-      // Reset scale when toggling crop mode
-      if (!isCropping) {
-        setScale(1);
-      }
-    } else if (control === 'transform') {
-      setShowTransformControls(!showTransformControls);
-    }
   };
 
   // Add text dragging handlers
@@ -1616,7 +1492,7 @@ export default function EditPage() {
                             key={shape}
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.98 }}
-                            onClick={() => setSelectedShape(shape as any)}
+                            onClick={() => setSelectedShape(shape as ShapeType)}
                             className={`
                               p-3 rounded-lg text-left transition-all
                               ${selectedShape === shape
@@ -1683,7 +1559,7 @@ export default function EditPage() {
                   transition={{ delay: 0.2 }}
                   className="text-gray-400 text-center"
                 >
-                  We're processing your image with all the amazing edits you've made. Just a moment...
+                  We&apos;re processing your image with all the amazing edits you&apos;ve made. Just a moment...
                 </motion.p>
               </motion.div>
             </motion.div>
